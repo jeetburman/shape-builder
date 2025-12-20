@@ -1,6 +1,6 @@
 // /* global window */
 import React, { useEffect, useRef, useState } from "react";
-import { Wrapper, CanvasContainer, OutputBox, StyledSVG, CopyButton } from "./shapeBuilder.styles";
+import { Wrapper, CanvasContainer, OutputBox, StyledSVG, CopyButton, CoordinateDisplay } from "./shapeBuilder.styles";
 import { Button, Typography, Box, CopyIcon, Select, MenuItem, Slider, FormControl } from "@sistent/sistent";
 import { SVG, extend as SVGextend } from "@svgdotjs/svg.js";
 import draw from "@svgdotjs/svg.draw.js";
@@ -22,6 +22,9 @@ const ShapeBuilder = () => {
   const [showCopied, setShowCopied] = useState(false);
   const [scale, setScale] = useState(1);
   const [currentPreset, setCurrentPreset] = useState(1);
+
+  const [mouseCoords, setMouseCoords] = useState({ x: 0, y: 0, normalized: { x: 0, y: 0 } });
+  const [isMouseInCanvas, setIsMouseInCanvas] = useState(false);
 
   const handleCopyToClipboard = async () => {
     if (!result.trim()) return;
@@ -88,6 +91,36 @@ const ShapeBuilder = () => {
 
     poly.plot(scaledPoints);
     showCytoArray();
+  };
+  
+  const handleMouseMove = (e) => {
+  const svg = boardRef.current;
+  if (!svg) return;
+
+  const rect = svg.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+  const normalizedX = (x - centerX) / centerX;
+  const normalizedY = (y - centerY) / centerY;
+
+  setMouseCoords({
+    x: Math.round(x),
+    y: Math.round(y),
+    normalized: {
+      x: parseFloat(normalizedX.toFixed(3)),
+      y: parseFloat(normalizedY.toFixed(3))
+    }
+  });
+};
+
+  const handleMouseEnter = () => {
+    setIsMouseInCanvas(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsMouseInCanvas(false);
   };
 
   const handleScaleChange = (newScale) => {
@@ -225,6 +258,9 @@ const ShapeBuilder = () => {
           width="100%"
           height="100%"
           onDoubleClick={closeShape}
+          onMouseMove={handleMouseMove}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           <defs>
             <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
@@ -233,6 +269,32 @@ const ShapeBuilder = () => {
           </defs>
           <rect className="grid" width="100%" height="100%" fill="url(#grid)" />
         </StyledSVG>
+
+        {isMouseInCanvas && (
+          <CoordinateDisplay>
+            <div className="coordinate-label">Mouse Position</div>
+            <div className="coordinate-values">
+              <div className="coordinate-item">
+                <span className="axis-label">X:</span>
+                <span className="axis-value">{mouseCoords.normalized.x}</span>
+              </div>
+              <div className="coordinate-item">
+                <span className="axis-label">Y:</span>
+                <span className="axis-value">{mouseCoords.normalized.y}</span>
+              </div>
+            </div>
+            <div style={{ 
+              marginTop: "8px", 
+              paddingTop: "8px", 
+              borderTop: "1px solid rgba(0, 179, 159, 0.3)",
+              fontSize: "10px",
+              color: "#666"
+            }}>
+              Pixel: ({mouseCoords.x}, {mouseCoords.y})
+            </div>
+          </CoordinateDisplay>
+        )}
+
         {error && (
           <div style={{
             position: "absolute",
