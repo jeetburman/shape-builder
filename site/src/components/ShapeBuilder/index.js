@@ -25,6 +25,7 @@ const ShapeBuilder = () => {
 
   const [mouseCoords, setMouseCoords] = useState({ x: 0, y: 0, normalized: { x: 0, y: 0 } });
   const [isMouseInCanvas, setIsMouseInCanvas] = useState(false);
+  const [showCoordinates, setShowCoordinates] = useState(true);
 
   const handleCopyToClipboard = async () => {
     if (!result.trim()) return;
@@ -145,6 +146,10 @@ const ShapeBuilder = () => {
 
   const handleSliderChange = (event, newValue) => {
     handleScaleChange(newValue);
+  };
+
+  const toggleCoordinates = () => {
+    setShowCoordinates(prev => !prev);
   };
 
   const handleKeyDown = (e) => {
@@ -273,7 +278,7 @@ const ShapeBuilder = () => {
           <rect className="grid" width="100%" height="100%" fill="url(#grid)" />
         </StyledSVG>
 
-       {isMouseInCanvas && (
+       {isMouseInCanvas && showCoordinates && (
         <CoordinateDisplay
           style={{
             left: `${mouseCoords.x + 15}px`,  
@@ -303,6 +308,7 @@ const ShapeBuilder = () => {
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 2, mt: 3, mb: 3, flexWrap: "wrap" }}>
         <Button variant="contained" onClick={clearShape}>Clear</Button>
         <Button variant="contained" onClick={closeShape}>Close Shape</Button>
+        <Button variant="contained" onClick={toggleCoordinates}>{showCoordinates ? "Hide Coordinates" : "Show Coordinates"}</Button>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, ml: 2 }}>
           <FormControl size="small" sx={{ minWidth: 80 }}>
