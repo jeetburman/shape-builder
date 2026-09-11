@@ -1,5 +1,22 @@
 import styled from "styled-components";
-// import styled from "@sistent/sistent";
+import { createTheme, darkModePalette, lightModePalette, typography } from "@sistent/sistent";
+
+/*
+ * Sistent design tokens.
+ *
+ * styled-components resolves `theme` from the styled-components ThemeProvider in
+ * src/pages/index.js, which supplies this site's local theme - Sistent's MUI
+ * theme lives in a separate (emotion) context and is not reachable from here.
+ * So Sistent's tokens are read straight from the library's exported token sets
+ * and selected with the same `theme.mode` flag the rest of the site keys off.
+ */
+const sistentBase = createTheme();
+
+const sistentPalette = ({ theme }) =>
+  (theme?.mode === "light" ? lightModePalette : darkModePalette);
+
+const sistentTypography = ({ theme }) =>
+  typography(theme?.mode === "light" ? "light" : "dark");
 
 // NOTE: background colors are hardcoded-temporarily for testing
 
@@ -140,19 +157,34 @@ export const CopyButton = styled.button`
 
 export const CoordinateDisplay = styled.div`
   position: absolute;
+  /* Never intercept pointer events - the readout sits over the drawing surface. */
   pointer-events: none;
-  background-color: ${({ theme }) => theme?.mode === "light" ? "rgba(255, 255, 255, 0.95)" : "rgba(43, 43, 43, 0.95)"};
-  border: 2px solid #00B39F;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12px;
-  font-weight: 600;
-  color: ${({ theme }) => theme?.mode === "light" ? "#111" : "#fff"};
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  user-select: none;
+  z-index: ${sistentBase.zIndex.tooltip};
+
+  padding: ${sistentBase.spacing(0.75)} ${sistentBase.spacing(1.25)};
+  border: 1px solid ${(props) => sistentPalette(props).border.brand};
+  border-radius: ${sistentBase.shape.borderRadius}px;
+  background-color: ${(props) => sistentPalette(props).background.elevatedComponents};
+  color: ${(props) => sistentPalette(props).text.default};
+  box-shadow: ${sistentBase.shadows[2]};
+
+  /*
+   * Brand font only. "Qanelas Soft" is the family name declared in
+   * src/fonts.css and used by src/styles/styles.js; Sistent's own token spells
+   * it "Qanelas Soft Regular", which this site does not load, so the family is
+   * named here and only the size/weight/rhythm come from the Sistent scale.
+   */
+  font-family: "Qanelas Soft";
+  font-size: ${(props) => sistentTypography(props).textL1Bold.fontSize};
+  font-weight: ${(props) => sistentTypography(props).textL1Bold.fontWeight};
+  line-height: ${(props) => sistentTypography(props).textL1Bold.lineHeight};
+  /* Keeps the readout from twitching as digits change width. */
+  font-variant-numeric: tabular-nums;
+
   white-space: nowrap;
+  /* WebKit still needs the prefix for user-select. */
+  -webkit-user-select: none;
+  user-select: none;
 `;
 
 // export const Wrapper = styled.div`

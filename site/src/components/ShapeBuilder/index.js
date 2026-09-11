@@ -12,6 +12,43 @@ const MIN_SCALE = 0.1;
 const MAX_SCALE = 3;
 const MIN_POLYGON_POINTS = 3;
 
+// Gap in px kept between the pointer and the coordinate readout.
+const READOUT_GAP = 16;
+// Decimal places shown in the readout.
+const READOUT_PRECISION = 3;
+
+/*
+ * Maps a point in canvas pixels onto -1..1 relative to the canvas centre.
+ * Note this is measured off the live element, whereas `showCytoArray` still
+ * normalizes against a hardcoded 260px half-extent; the two agree only while
+ * the canvas is 520px square, which it is not at most viewport widths. That
+ * hardcoded divisor predates this feature and is left for a separate change so
+ * the polygon output contract is not altered here.
+ */
+const normalizeToCanvas = (x, y, rect) => [
+  (x - rect.width / 2) / (rect.width / 2),
+  (y - rect.height / 2) / (rect.height / 2)
+];
+
+/*
+ * Anchors the readout to whichever pair of container edges keeps it on screen.
+ * Anchoring the far side with `right`/`bottom` means the readout never has to be
+ * measured to know it will not be clipped near the canvas edge.
+ */
+const buildReadoutAnchor = (x, y, rect) => {
+  const anchor = x > rect.width / 2
+    ? { right: `${Math.round(rect.width - x + READOUT_GAP)}px` }
+    : { left: `${Math.round(x + READOUT_GAP)}px` };
+
+  if (y > rect.height / 2) {
+    anchor.bottom = `${Math.round(rect.height - y + READOUT_GAP)}px`;
+  } else {
+    anchor.top = `${Math.round(y + READOUT_GAP)}px`;
+  }
+
+  return anchor;
+};
+
 const ShapeBuilder = () => {
   const boardRef = useRef(null);
   const polyRef = useRef(null);
@@ -23,9 +60,12 @@ const ShapeBuilder = () => {
   const [scale, setScale] = useState(1);
   const [currentPreset, setCurrentPreset] = useState(1);
 
-  const [mouseCoords, setMouseCoords] = useState({ x: 0, y: 0, normalized: { x: 0, y: 0 } });
-  const [isMouseInCanvas, setIsMouseInCanvas] = useState(false);
+  // `null` whenever the pointer is off the canvas, so position and visibility
+  // can never disagree.
+  const [readout, setReadout] = useState(null);
   const [showCoordinates, setShowCoordinates] = useState(true);
+  const readoutFrameRef = useRef(0);
+  const pendingReadoutRef = useRef(null);
 
   const handleCopyToClipboard = async () => {
     if (!result.trim()) return;
@@ -93,38 +133,51 @@ const ShapeBuilder = () => {
     poly.plot(scaledPoints);
     showCytoArray();
   };
-  
-  const handleMouseMove = (e) => {
-    const svg = boardRef.current;
-    if (!svg) return;
 
-    const rect = svg.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const normalizedX = (x - centerX) / centerX;
-    const normalizedY = (y - centerY) / centerY;
+  const cancelReadoutFrame = () => {
+    if (readoutFrameRef.current) {
+      window.cancelAnimationFrame(readoutFrameRef.current);
+      readoutFrameRef.current = 0;
+    }
+    pendingReadoutRef.current = null;
+  };
 
-    setMouseCoords({
-      x: Math.round(x),
-      y: Math.round(y),
-      normalized: {
-        x: parseFloat(normalizedX.toFixed(3)),
-        y: parseFloat(normalizedY.toFixed(3))
-      },
+  // Pointer events fire faster than the browser paints, so coalesce them onto a
+  // single animation frame rather than re-rendering once per event.
+  const scheduleReadout = (next) => {
+    pendingReadoutRef.current = next;
+    if (readoutFrameRef.current) return;
 
-      screenX: e.clientX,
-      screenY: e.clientY
+    readoutFrameRef.current = window.requestAnimationFrame(() => {
+      readoutFrameRef.current = 0;
+      setReadout(pendingReadoutRef.current);
     });
   };
 
-  const handleMouseEnter = () => {
-    setIsMouseInCanvas(true);
+  // Pointer events cover mouse, pen and touch with one standard API supported by
+  // every current browser; `currentTarget` is always the canvas the handler is
+  // bound to, even when the event bubbles up from a drawn shape.
+  const handlePointerMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const [normalizedX, normalizedY] = normalizeToCanvas(x, y, rect);
+
+    scheduleReadout({
+      anchor: buildReadoutAnchor(x, y, rect),
+      x: normalizedX.toFixed(READOUT_PRECISION),
+      y: normalizedY.toFixed(READOUT_PRECISION)
+    });
   };
 
-  const handleMouseLeave = () => {
-    setIsMouseInCanvas(false);
+  // Covers pointerleave and pointercancel: a touch or pen stream that is taken
+  // over by the browser never emits a leave, and would otherwise strand the
+  // readout on screen.
+  const hideReadout = () => {
+    cancelReadoutFrame();
+    setReadout(null);
   };
 
   const handleScaleChange = (newScale) => {
@@ -149,7 +202,7 @@ const ShapeBuilder = () => {
   };
 
   const toggleCoordinates = () => {
-    setShowCoordinates(prev => !prev);
+    setShowCoordinates((prev) => !prev);
   };
 
   const handleKeyDown = (e) => {
@@ -249,6 +302,7 @@ const ShapeBuilder = () => {
   useEffect(() => {
     initializeDrawing();
     return () => {
+      cancelReadoutFrame();
       detachKeyListeners();
       if (polyRef.current) {
         polyRef.current.draw("cancel");
@@ -266,9 +320,10 @@ const ShapeBuilder = () => {
           width="100%"
           height="100%"
           onDoubleClick={closeShape}
-          onMouseMove={handleMouseMove}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          onPointerMove={handlePointerMove}
+          onPointerEnter={handlePointerMove}
+          onPointerLeave={hideReadout}
+          onPointerCancel={hideReadout}
         >
           <defs>
             <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
@@ -278,16 +333,12 @@ const ShapeBuilder = () => {
           <rect className="grid" width="100%" height="100%" fill="url(#grid)" />
         </StyledSVG>
 
-       {isMouseInCanvas && showCoordinates && (
-        <CoordinateDisplay
-          style={{
-            left: `${mouseCoords.x + 15}px`,  
-            top: `${mouseCoords.y + 15}px`   
-          }}
-        >
-          X: {mouseCoords.normalized.x}, Y: {mouseCoords.normalized.y}
-        </CoordinateDisplay>
-      )}
+        {showCoordinates && readout && (
+          /* Decorative, pointer-only overlay: keep it out of the a11y tree. */
+          <CoordinateDisplay aria-hidden="true" style={readout.anchor}>
+            X: {readout.x}, Y: {readout.y}
+          </CoordinateDisplay>
+        )}
 
         {error && (
           <div style={{
@@ -308,7 +359,13 @@ const ShapeBuilder = () => {
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 2, mt: 3, mb: 3, flexWrap: "wrap" }}>
         <Button variant="contained" onClick={clearShape}>Clear</Button>
         <Button variant="contained" onClick={closeShape}>Close Shape</Button>
-        <Button variant="contained" onClick={toggleCoordinates}>{showCoordinates ? "Hide Coordinates" : "Show Coordinates"}</Button>
+        <Button
+          variant="contained"
+          onClick={toggleCoordinates}
+          aria-pressed={showCoordinates}
+        >
+          {showCoordinates ? "Hide Coordinates" : "Show Coordinates"}
+        </Button>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, ml: 2 }}>
           <FormControl size="small" sx={{ minWidth: 80 }}>
